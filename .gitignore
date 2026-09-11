@@ -13,3 +13,8 @@ build/
 tmp/temp/
 tmp/worktrees/
 # <<< ores fleet hygiene <<<
+
+tmp
+temp
+tmp/worktrees
+temp/worktrees
