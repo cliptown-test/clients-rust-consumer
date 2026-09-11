@@ -1,0 +1,54 @@
+name: certify shared-lib client candidate
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/certify-shared-lib-client.yml'
+      - 'scripts/certify-clients-shared-lib.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out certification harness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          show-progress: false
+
+      - name: Check out exact ClipTown client candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: cliptown/cliptown-clients
+          ref: b8eab8c2f75a92edebb13f6d20535e08af0d0f54
+          path: workspace/cliptown-clients
+          persist-credentials: false
+          show-progress: false
+
+      - name: Check out exact interfaces dependency
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: cliptown/cliptown-interfaces
+          ref: ec4f820bcc9181c2423a6963d3890ddc8ef18b97
+          path: workspace/cliptown-interfaces
+          persist-credentials: false
+          show-progress: false
+
+      - name: Set up Rust 1.88
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
+        with:
+          toolchain: 1.88.0
+
+      - name: Certify immutable shared-library graph and Rust behavior
+        env:
+          CLIENTS_DIR: ${{ github.workspace }}/workspace/cliptown-clients
+          INTERFACES_DIR: ${{ github.workspace }}/workspace/cliptown-interfaces
+          EXPECTED_CLIENT_SHA: b8eab8c2f75a92edebb13f6d20535e08af0d0f54
+          EXPECTED_INTERFACES_SHA: ec4f820bcc9181c2423a6963d3890ddc8ef18b97
+          EXPECTED_LIB_SHA: eafe227afad95b75673c3e9b704cf9cc3bc2ee9d
+        run: bash scripts/certify-clients-shared-lib.sh
