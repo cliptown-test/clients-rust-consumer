@@ -8,6 +8,12 @@ target/
 build/
 .zed/
 .vendor/
+
+# >>> ores fleet hygiene — managed block, edits below are overwritten >>>
+tmp/temp/
+tmp/worktrees/
+# <<< ores fleet hygiene <<<
+
 tmp
 temp
 tmp/worktrees
