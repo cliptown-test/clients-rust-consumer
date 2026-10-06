@@ -704,6 +704,7 @@ fn canonicalize_callable_declaration(line: &str, words: &[WordSpan]) -> Option<S
                 | "trap"
                 | "structural"
                 | "abstract"
+                | "quantum"
                 | "fnc"
                 | "routine"
         )
@@ -731,6 +732,7 @@ fn canonicalize_callable_declaration(line: &str, words: &[WordSpan]) -> Option<S
     let mut is_trap = false;
     let mut is_structural = false;
     let mut is_abstract = false;
+    let mut is_quantum = false;
     let mut kind: Option<&str> = None;
 
     for span in prefix {
@@ -752,6 +754,7 @@ fn canonicalize_callable_declaration(line: &str, words: &[WordSpan]) -> Option<S
             "trap" => set_once(&mut is_trap),
             "structural" => set_once(&mut is_structural),
             "abstract" => set_once(&mut is_abstract),
+            "quantum" => set_once(&mut is_quantum),
             "fnc" | "routine" => {
                 if kind.is_some() {
                     true
@@ -768,9 +771,20 @@ fn canonicalize_callable_declaration(line: &str, words: &[WordSpan]) -> Option<S
     }
 
     let kind = kind?;
+
+    // The compiler currently admits quantum only on fnc/static fnc. Keep
+    // unsupported combinations untouched so semantic diagnostics remain the
+    // compiler's job rather than being obscured by formatter normalization.
+    if is_quantum && kind != "fnc" {
+        return None;
+    }
+
     let mut canonical = Vec::new();
     if let Some(visibility) = visibility {
         canonical.push(visibility);
+    }
+    if is_quantum {
+        canonical.push("quantum");
     }
     if is_static {
         canonical.push("static");
@@ -1320,6 +1334,9 @@ fnc nlex pure async pub baz() {
 fnc structural static pub helper() {
 }
 
+static fnc quantum pub qsolve() {
+}
+
 fnc structural signature() => String;
 
 actor pub fnc untrusted async worker() {
@@ -1349,6 +1366,7 @@ define contract pub Contract {
         assert!(got.contains("pub async nlex pure fnc bar() {"));
         assert!(got.contains("pub async nlex pure fnc baz() {"));
         assert!(got.contains("pub static structural fnc helper() {"));
+        assert!(got.contains("pub quantum static fnc qsolve() {"));
         assert!(got.contains("structural fnc signature() => String;"));
         assert!(got.contains("pub async untrusted actor fnc worker() {"));
         assert!(got.contains("pub async untrusted actor fnc worker_after_fnc() {"));
@@ -1443,6 +1461,25 @@ define contract BraceContract {
             let got = format_source(&source).unwrap();
             assert_eq!(got, "pub async nlex fnc work() {\n}\n");
         }
+
+        for order in permutations(&["pub", "quantum", "fnc"]) {
+            let source = format!("{} qwork() {{\n}}\n", order.join(" "));
+            let got = format_source(&source).unwrap();
+            assert_eq!(got, "pub quantum fnc qwork() {\n}\n");
+        }
+
+        for order in permutations(&["pub", "quantum", "static", "fnc"]) {
+            let source = format!("{} qstatic() {{\n}}\n", order.join(" "));
+            let got = format_source(&source).unwrap();
+            assert_eq!(got, "pub quantum static fnc qstatic() {\n}\n");
+        }
+
+        let invalid_quantum_actor = "quantum actor fnc bad() {\n}\n";
+        assert_eq!(
+            format_source(invalid_quantum_actor).unwrap(),
+            invalid_quantum_actor,
+            "formatter must leave unsupported quantum actor syntax for compiler diagnostics"
+        );
 
         let mut actor_cases = 0;
         for order in permutations(&["pub", "async", "untrusted", "actor", "fnc"]) {
