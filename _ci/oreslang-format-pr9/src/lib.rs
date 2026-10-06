@@ -442,6 +442,7 @@ fn canonicalize_declaration_line(line: &str, initial: LexState) -> String {
     }
 
     canonicalize_class_declaration(line, &words)
+        .or_else(|| canonicalize_actor_declaration(line, &words))
         .or_else(|| canonicalize_callable_declaration(line, &words))
         .unwrap_or_else(|| line.to_string())
 }
@@ -492,6 +493,145 @@ fn canonicalize_class_declaration(line: &str, words: &[WordSpan]) -> Option<Stri
         canonical.push("abstract");
     }
     canonical.push("class");
+
+    Some(rewrite_word_prefix(line, prefix, &canonical))
+}
+
+fn canonicalize_actor_declaration(line: &str, words: &[WordSpan]) -> Option<String> {
+    let is_prefix_word = |word: &str| {
+        matches!(
+            word,
+            "pub"
+                | "private"
+                | "static"
+                | "async"
+                | "generator"
+                | "nlex"
+                | "pure"
+                | "trap"
+                | "structural"
+                | "abstract"
+                | "shared"
+                | "untrusted"
+                | "actor"
+                | "isoactor"
+                | "fnc"
+                | "routine"
+        )
+    };
+
+    let prefix_len = words
+        .iter()
+        .take_while(|span| is_prefix_word(&line[span.start..span.end]))
+        .count();
+    if prefix_len == 0 || prefix_len == words.len() {
+        return None;
+    }
+
+    let prefix = &words[..prefix_len];
+    if !plain_word_prefix(line, prefix) {
+        return None;
+    }
+
+    let mut visibility: Option<&str> = None;
+    let mut is_static = false;
+    let mut is_async = false;
+    let mut is_generator = false;
+    let mut is_nlex = false;
+    let mut is_pure = false;
+    let mut is_trap = false;
+    let mut is_structural = false;
+    let mut is_abstract = false;
+    let mut actor_mode: Option<&str> = None;
+    let mut actor_marker: Option<&str> = None;
+    let mut kind: Option<&str> = None;
+
+    for span in prefix {
+        let word = &line[span.start..span.end];
+        let duplicate = match word {
+            "pub" | "private" => {
+                if visibility.is_some() {
+                    true
+                } else {
+                    visibility = Some(word);
+                    false
+                }
+            }
+            "static" => set_once(&mut is_static),
+            "async" => set_once(&mut is_async),
+            "generator" => set_once(&mut is_generator),
+            "nlex" => set_once(&mut is_nlex),
+            "pure" => set_once(&mut is_pure),
+            "trap" => set_once(&mut is_trap),
+            "structural" => set_once(&mut is_structural),
+            "abstract" => set_once(&mut is_abstract),
+            "shared" | "untrusted" => {
+                if actor_mode.is_some() {
+                    true
+                } else {
+                    actor_mode = Some(word);
+                    false
+                }
+            }
+            "actor" | "isoactor" => {
+                if actor_marker.is_some() {
+                    true
+                } else {
+                    actor_marker = Some(word);
+                    false
+                }
+            }
+            "fnc" | "routine" => {
+                if kind.is_some() {
+                    true
+                } else {
+                    kind = Some(word);
+                    false
+                }
+            }
+            _ => true,
+        };
+        if duplicate {
+            return None;
+        }
+    }
+
+    let actor_marker = actor_marker?;
+    let mut canonical = Vec::new();
+    if let Some(visibility) = visibility {
+        canonical.push(visibility);
+    }
+    if is_static {
+        canonical.push("static");
+    }
+    if is_async {
+        canonical.push("async");
+    }
+    if is_generator {
+        canonical.push("generator");
+    }
+    if is_nlex {
+        canonical.push("nlex");
+    }
+    if is_pure {
+        canonical.push("pure");
+    }
+    if is_trap {
+        canonical.push("trap");
+    }
+    if is_structural {
+        canonical.push("structural");
+    }
+    if is_abstract {
+        canonical.push("abstract");
+    }
+    if let Some(actor_mode) = actor_mode {
+        canonical.push(actor_mode);
+    }
+    canonical.push(actor_marker);
+    if let Some(kind) = kind {
+        canonical.push(kind);
+    }
 
     Some(rewrite_word_prefix(line, prefix, &canonical))
 }
@@ -1124,6 +1264,12 @@ fnc structural static pub helper() {
 }
 
 fnc structural signature() => String;
+
+actor pub fnc untrusted async worker() {
+}
+
+actor shared pub Account {
+}
 "#;
 
         let got = format_source(src).unwrap();
@@ -1135,6 +1281,10 @@ fnc structural signature() => String;
         assert!(got.contains("pub async nlex pure fnc baz() {"));
         assert!(got.contains("pub static structural fnc helper() {"));
         assert!(got.contains("structural fnc signature() => String;"));
+        assert!(got.contains("pub async untrusted actor fnc worker() {"));
+        assert!(got.contains("pub shared actor Account {"));
+        assert!(!got.contains("actor pub fnc"));
+        assert!(!got.contains("actor shared pub"));
         assert!(!got.contains("pub define class"));
         assert!(!got.contains("class pub define"));
         assert!(!got.contains("define class pub"));
