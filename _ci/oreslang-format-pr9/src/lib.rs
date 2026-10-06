@@ -1355,6 +1355,28 @@ define contract pub Contract {
     }
 
     #[test]
+    fn leaves_ambiguous_or_commented_modifier_prefixes_untouched() {
+        let src = r#"pub /* keep */ define class X as {
+}
+
+pub private fnc conflict() {
+}
+
+shared untrusted actor Conflict {
+}
+
+define pub private interface Broken {
+}
+"#;
+
+        let got = format_source(src).unwrap();
+        assert!(got.contains("pub /* keep */ define class X as {"));
+        assert!(got.contains("pub private fnc conflict() {"));
+        assert!(got.contains("shared untrusted actor Conflict {"));
+        assert!(got.contains("define pub private interface Broken {"));
+    }
+
+    #[test]
     fn canonicalizes_executable_and_signature_arrows() {
         let src = r#"define interface Named
   fnc name(): String;
