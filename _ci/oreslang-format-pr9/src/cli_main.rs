@@ -188,10 +188,10 @@ fn select_mode(
     next: Mode,
     flag: &'static str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    if let Some(previous) = *explicit_mode
-        && previous != flag
-    {
-        return Err(format!("{previous} cannot be combined with {flag}").into());
+    if let Some(previous) = *explicit_mode {
+        if previous != flag {
+            return Err(format!("{previous} cannot be combined with {flag}").into());
+        }
     }
 
     *mode = next;
