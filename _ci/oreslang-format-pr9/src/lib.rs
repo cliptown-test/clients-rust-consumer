@@ -442,6 +442,7 @@ fn canonicalize_declaration_line(line: &str, initial: LexState) -> String {
     }
 
     canonicalize_class_declaration(line, &words)
+        .or_else(|| canonicalize_defined_interface_or_contract(line, &words))
         .or_else(|| canonicalize_actor_declaration(line, &words))
         .or_else(|| canonicalize_callable_declaration(line, &words))
         .unwrap_or_else(|| line.to_string())
@@ -493,6 +494,57 @@ fn canonicalize_class_declaration(line: &str, words: &[WordSpan]) -> Option<Stri
         canonical.push("abstract");
     }
     canonical.push("class");
+
+    Some(rewrite_word_prefix(line, prefix, &canonical))
+}
+
+fn canonicalize_defined_interface_or_contract(
+    line: &str,
+    words: &[WordSpan],
+) -> Option<String> {
+    let is_prefix_word = |word: &str| {
+        matches!(word, "define" | "interface" | "contract" | "pub" | "private")
+    };
+    let prefix_len = words
+        .iter()
+        .take_while(|span| is_prefix_word(&line[span.start..span.end]))
+        .count();
+    if prefix_len == 0 || prefix_len == words.len() {
+        return None;
+    }
+
+    let prefix = &words[..prefix_len];
+    if !plain_word_prefix(line, prefix) {
+        return None;
+    }
+
+    let mut saw_define = false;
+    let mut visibility: Option<&str> = None;
+    let mut kind: Option<&str> = None;
+
+    for span in prefix {
+        match &line[span.start..span.end] {
+            "define" if !saw_define => saw_define = true,
+            "pub" | "private" if visibility.is_none() => {
+                visibility = Some(&line[span.start..span.end])
+            }
+            "interface" | "contract" if kind.is_none() => {
+                kind = Some(&line[span.start..span.end])
+            }
+            _ => return None,
+        }
+    }
+
+    let kind = kind?;
+    if !saw_define {
+        return None;
+    }
+
+    let mut canonical = vec!["define"];
+    if let Some(visibility) = visibility {
+        canonical.push(visibility);
+    }
+    canonical.push(kind);
 
     Some(rewrite_word_prefix(line, prefix, &canonical))
 }
@@ -1270,6 +1322,12 @@ actor pub fnc untrusted async worker() {
 
 actor shared pub Account {
 }
+
+interface pub define Api {
+}
+
+define contract pub Contract {
+}
 "#;
 
         let got = format_source(src).unwrap();
@@ -1283,6 +1341,10 @@ actor shared pub Account {
         assert!(got.contains("structural fnc signature() => String;"));
         assert!(got.contains("pub async untrusted actor fnc worker() {"));
         assert!(got.contains("pub shared actor Account {"));
+        assert!(got.contains("define pub interface Api {"));
+        assert!(got.contains("define pub contract Contract {"));
+        assert!(!got.contains("interface pub define"));
+        assert!(!got.contains("define contract pub"));
         assert!(!got.contains("actor pub fnc"));
         assert!(!got.contains("actor shared pub"));
         assert!(!got.contains("pub define class"));
