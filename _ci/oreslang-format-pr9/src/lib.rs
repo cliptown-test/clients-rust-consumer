@@ -1461,6 +1461,15 @@ define contract BraceContract {
             assert_eq!(got, "pub async shared actor routine worker_routine() {\n}\n");
         }
         assert_eq!(actor_routine_cases, 120);
+
+        let mut isoactor_cases = 0;
+        for order in permutations(&["pub", "async", "isoactor", "fnc"]) {
+            isoactor_cases += 1;
+            let source = format!("{} private_worker() {{\n}}\n", order.join(" "));
+            let got = format_source(&source).unwrap();
+            assert_eq!(got, "pub async isoactor fnc private_worker() {\n}\n");
+        }
+        assert_eq!(isoactor_cases, 24);
     }
 
     #[test]
