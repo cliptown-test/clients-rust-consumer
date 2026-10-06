@@ -447,10 +447,18 @@ fn canonicalize_declaration_line(line: &str, initial: LexState) -> String {
 }
 
 fn canonicalize_class_declaration(line: &str, words: &[WordSpan]) -> Option<String> {
-    let class_index = words
+    let is_prefix_word = |word: &str| {
+        matches!(word, "define" | "class" | "pub" | "private" | "abstract")
+    };
+    let prefix_len = words
         .iter()
-        .position(|span| &line[span.start..span.end] == "class")?;
-    let prefix = &words[..=class_index];
+        .take_while(|span| is_prefix_word(&line[span.start..span.end]))
+        .count();
+    if prefix_len == 0 || prefix_len == words.len() {
+        return None;
+    }
+
+    let prefix = &words[..prefix_len];
     if !plain_word_prefix(line, prefix) {
         return None;
     }
@@ -1097,8 +1105,11 @@ mod tests {
         let src = r#"pub define class X as {
 }
 
-pub define class Y as
+class pub define Y as
 end
+
+define class pub abstract Z as {
+}
 
 fnc pub async foo() {
 }
@@ -1109,18 +1120,24 @@ pure nlex async pub fnc bar() {
 fnc nlex pure async pub baz() {
 }
 
-private define abstract class Z as
-end
+fnc structural static pub helper() {
+}
+
+fnc structural signature() => String;
 "#;
 
         let got = format_source(src).unwrap();
         assert!(got.contains("define pub class X as {"));
         assert!(got.contains("define pub class Y as"));
+        assert!(got.contains("define pub abstract class Z as {"));
         assert!(got.contains("pub async fnc foo() {"));
         assert!(got.contains("pub async nlex pure fnc bar() {"));
         assert!(got.contains("pub async nlex pure fnc baz() {"));
-        assert!(got.contains("define private abstract class Z as"));
+        assert!(got.contains("pub static structural fnc helper() {"));
+        assert!(got.contains("structural fnc signature() => String;"));
         assert!(!got.contains("pub define class"));
+        assert!(!got.contains("class pub define"));
+        assert!(!got.contains("define class pub"));
         assert!(!got.contains("fnc pub async"));
         assert_eq!(format_source(&got).unwrap(), got);
     }
