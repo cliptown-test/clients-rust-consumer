@@ -1325,6 +1325,12 @@ fnc structural signature() => String;
 actor pub fnc untrusted async worker() {
 }
 
+fnc pub actor untrusted async worker_after_fnc() {
+}
+
+routine shared pub actor async worker_routine_after_kind() {
+}
+
 actor shared pub Account {
 }
 
@@ -1345,6 +1351,8 @@ define contract pub Contract {
         assert!(got.contains("pub static structural fnc helper() {"));
         assert!(got.contains("structural fnc signature() => String;"));
         assert!(got.contains("pub async untrusted actor fnc worker() {"));
+        assert!(got.contains("pub async untrusted actor fnc worker_after_fnc() {"));
+        assert!(got.contains("pub async shared actor routine worker_routine_after_kind() {"));
         assert!(got.contains("pub shared actor Account {"));
         assert!(got.contains("define pub interface Api {"));
         assert!(got.contains("define pub contract Contract {"));
@@ -1396,6 +1404,63 @@ define contract BraceContract {
         assert!(got.contains("fnc end_sig() => String;"));
         assert!(got.contains("fnc brace_sig() => String;"));
         assert_eq!(format_source(&got).unwrap(), got);
+    }
+
+    fn permutations(tokens: &[&str]) -> Vec<Vec<String>> {
+        fn visit(rest: Vec<String>, prefix: Vec<String>, out: &mut Vec<Vec<String>>) {
+            if rest.is_empty() {
+                out.push(prefix);
+                return;
+            }
+            for index in 0..rest.len() {
+                let mut next_rest = rest.clone();
+                let token = next_rest.remove(index);
+                let mut next_prefix = prefix.clone();
+                next_prefix.push(token);
+                visit(next_rest, next_prefix, out);
+            }
+        }
+
+        let mut out = Vec::new();
+        visit(
+            tokens.iter().map(|token| (*token).to_string()).collect(),
+            Vec::new(),
+            &mut out,
+        );
+        out
+    }
+
+    #[test]
+    fn canonicalizes_all_supported_modifier_permutations() {
+        for order in permutations(&["define", "class", "pub", "abstract"]) {
+            let source = format!("{} Box as {{\n}}\n", order.join(" "));
+            let got = format_source(&source).unwrap();
+            assert_eq!(got, "define pub abstract class Box as {\n}\n");
+        }
+
+        for order in permutations(&["pub", "async", "nlex", "fnc"]) {
+            let source = format!("{} work() {{\n}}\n", order.join(" "));
+            let got = format_source(&source).unwrap();
+            assert_eq!(got, "pub async nlex fnc work() {\n}\n");
+        }
+
+        let mut actor_cases = 0;
+        for order in permutations(&["pub", "async", "untrusted", "actor", "fnc"]) {
+            actor_cases += 1;
+            let source = format!("{} worker() {{\n}}\n", order.join(" "));
+            let got = format_source(&source).unwrap();
+            assert_eq!(got, "pub async untrusted actor fnc worker() {\n}\n");
+        }
+        assert_eq!(actor_cases, 120);
+
+        let mut actor_routine_cases = 0;
+        for order in permutations(&["pub", "async", "shared", "actor", "routine"]) {
+            actor_routine_cases += 1;
+            let source = format!("{} worker_routine() {{\n}}\n", order.join(" "));
+            let got = format_source(&source).unwrap();
+            assert_eq!(got, "pub async shared actor routine worker_routine() {\n}\n");
+        }
+        assert_eq!(actor_routine_cases, 120);
     }
 
     #[test]
