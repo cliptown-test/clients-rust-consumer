@@ -294,16 +294,15 @@ pub fn format_source(source: &str) -> Result<String, FormatError> {
             indent = indent.saturating_sub(nonleading_closes - opens);
         }
 
-        if let Some(kind) = define_kind(structural)
-            && !structural.contains('{')
-            && !ends_statement(structural)
-        {
-            next_order += 1;
-            define_stack.push(DefineFrame {
-                kind,
-                order: next_order,
-            });
-            indent += 1;
+        if let Some(kind) = define_kind(structural) {
+            if !structural.contains('{') && !ends_statement(structural) {
+                next_order += 1;
+                define_stack.push(DefineFrame {
+                    kind,
+                    order: next_order,
+                });
+                indent += 1;
+            }
         }
 
         if opens_conditional_block(structural) && !branch_line {
@@ -424,10 +423,10 @@ fn nearest_signature_context(defines: &[DefineFrame], braces: &[BraceFrame]) -> 
             | BraceKind::Actor => Some(false),
             BraceKind::Other => None,
         };
-        if let Some(is_signature) = is_signature
-            && newest.is_none_or(|(order, _)| frame.order > order)
-        {
-            newest = Some((frame.order, is_signature));
+        if let Some(is_signature) = is_signature {
+            if newest.is_none_or(|(order, _)| frame.order > order) {
+                newest = Some((frame.order, is_signature));
+            }
         }
     }
 
@@ -845,20 +844,20 @@ fn canonicalize_conditional_line(line: &str, initial: LexState) -> String {
 
     // Braced conditionals do not use then/do. We still canonicalize branch
     // aliases above so all source converges on "elif".
-    if first_visible_char_index(line, '{', initial).is_none()
-        && let Some(last) = words.last().copied()
-    {
-        let last_word = word(last);
-        if last_word == "do" || last_word == "then" {
-            let prefix = &line[..last.start];
-            let before = prefix.trim_end();
-            let replacement_start = before.len();
-            let replacement = if before.ends_with(';') {
-                " then".to_string()
-            } else {
-                "; then".to_string()
-            };
-            replacements.push((replacement_start, last.end, replacement));
+    if first_visible_char_index(line, '{', initial).is_none() {
+        if let Some(last) = words.last().copied() {
+            let last_word = word(last);
+            if last_word == "do" || last_word == "then" {
+                let prefix = &line[..last.start];
+                let before = prefix.trim_end();
+                let replacement_start = before.len();
+                let replacement = if before.ends_with(';') {
+                    " then".to_string()
+                } else {
+                    "; then".to_string()
+                };
+                replacements.push((replacement_start, last.end, replacement));
+            }
         }
     }
 
