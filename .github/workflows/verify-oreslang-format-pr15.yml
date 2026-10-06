@@ -1,0 +1,25 @@
+name: verify oreslang-format pr15
+
+on:
+  pull_request:
+    paths:
+      - '_ci/oreslang-format-pr15/**'
+      - '.github/workflows/verify-oreslang-format-pr15.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: _ci/oreslang-format-pr15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d
+      - run: cargo fmt --all -- --check
+      - run: cargo test --all-targets
+      - run: cargo test --doc
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
