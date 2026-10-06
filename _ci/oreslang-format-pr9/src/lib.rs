@@ -45,6 +45,7 @@ enum DefineKind {
     Module,
     Class,
     Interface,
+    Contract,
     Trait,
     Struct,
     Other,
@@ -56,6 +57,7 @@ enum BraceKind {
     Module,
     Class,
     Interface,
+    Contract,
     Trait,
     Struct,
     Actor,
@@ -107,7 +109,7 @@ struct LexState {
 /// - exactly two blank lines between sibling executable callable bodies;
 /// - executable callable return separators are canonicalized to `->`;
 /// - interface/trait callable signatures are canonicalized to `=>`;
-/// - `end`, `fi`, `done`, braces, class/interface/trait/struct/module nesting,
+/// - `end`, `fi`, `done`, braces, class/interface/contract/trait/struct/module nesting,
 ///   actor bodies, and strings/comments are indentation-aware.
 ///
 /// It canonicalizes recognized declaration-modifier prefixes, but does not
@@ -407,7 +409,7 @@ fn nearest_signature_context(defines: &[DefineFrame], braces: &[BraceFrame]) -> 
     let mut newest: Option<(usize, bool)> = None;
 
     for frame in defines {
-        let is_signature = matches!(frame.kind, DefineKind::Interface | DefineKind::Trait);
+        let is_signature = matches!(frame.kind, DefineKind::Interface | DefineKind::Contract | DefineKind::Trait);
         if newest.is_none_or(|(order, _)| frame.order > order) {
             newest = Some((frame.order, is_signature));
         }
@@ -415,7 +417,7 @@ fn nearest_signature_context(defines: &[DefineFrame], braces: &[BraceFrame]) -> 
 
     for frame in braces {
         let is_signature = match frame.kind {
-            BraceKind::Interface | BraceKind::Trait => Some(true),
+            BraceKind::Interface | BraceKind::Contract | BraceKind::Trait => Some(true),
             BraceKind::Callable
             | BraceKind::Module
             | BraceKind::Class
@@ -842,6 +844,7 @@ fn define_kind(line: &str) -> Option<DefineKind> {
             "module" => return Some(DefineKind::Module),
             "class" => return Some(DefineKind::Class),
             "interface" => return Some(DefineKind::Interface),
+            "contract" => return Some(DefineKind::Contract),
             "trait" => return Some(DefineKind::Trait),
             "struct" => return Some(DefineKind::Struct),
             _ => return Some(DefineKind::Other),
@@ -858,6 +861,8 @@ fn brace_container_kind(line: &str) -> Option<BraceKind> {
         .collect();
     if words.contains(&"interface") {
         Some(BraceKind::Interface)
+    } else if words.contains(&"contract") {
+        Some(BraceKind::Contract)
     } else if words.contains(&"trait") {
         Some(BraceKind::Trait)
     } else if words.contains(&"class") {
@@ -1374,6 +1379,23 @@ define pub private interface Broken {
         assert!(got.contains("pub private fnc conflict() {"));
         assert!(got.contains("shared untrusted actor Conflict {"));
         assert!(got.contains("define pub private interface Broken {"));
+    }
+
+    #[test]
+    fn contracts_are_signature_contexts_in_end_and_brace_forms() {
+        let src = r#"define contract EndContract as
+  fnc end_sig() -> String;
+end
+
+define contract BraceContract {
+  fnc brace_sig(): String;
+}
+"#;
+
+        let got = format_source(src).unwrap();
+        assert!(got.contains("fnc end_sig() => String;"));
+        assert!(got.contains("fnc brace_sig() => String;"));
+        assert_eq!(format_source(&got).unwrap(), got);
     }
 
     #[test]
